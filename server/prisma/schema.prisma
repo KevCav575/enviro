@@ -1,0 +1,287 @@
+// EnviroGest MX — Prisma Schema
+// Target: MySQL 8.0+
+// Run: npx prisma migrate dev --name init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  consultor
+  cliente
+}
+
+enum TramiteNivel {
+  federal
+  estatal
+  municipal
+}
+
+enum TramiteEstado {
+  no_iniciado
+  recopilando
+  ingresado
+  en_revision
+  cumplido
+  vencido
+}
+
+enum AlertaTipo {
+  vencimiento
+  solicitud
+  firma
+  visita
+  estado
+  info
+}
+
+// ─────────────────────────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  nombre       String    @db.VarChar(100)
+  empresa      String    @default("") @db.VarChar(150)
+  email        String    @unique @db.VarChar(150)
+  pwd_hash     String    @db.VarChar(100)
+  rol          UserRole
+  giro         String?   @db.VarChar(100)
+  // Cached for quick navigation — canonical source is projects.cliente_id
+  proyecto_id  String?   @db.VarChar(36)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  proyectos_cliente   Proyecto[] @relation("ClienteProyectos")
+  proyectos_consultor Proyecto[] @relation("ConsultorProyectos")
+
+  @@index([rol])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PROJECTS
+// ─────────────────────────────────────────────────────────────────
+
+model Proyecto {
+  id           String   @id @default(uuid())
+  cliente_id   String   @db.VarChar(36)
+  consultor_id String?  @db.VarChar(36)
+  notas        String   @default("") @db.Text
+  creado       DateTime @default(now()) @db.Date
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  cliente      User           @relation("ClienteProyectos",  fields: [cliente_id],   references: [id], onDelete: Cascade)
+  consultor    User?          @relation("ConsultorProyectos", fields: [consultor_id], references: [id], onDelete: SetNull)
+  cuestionario Cuestionario?
+  tramites     Tramite[]
+  alertas      Alerta[]
+  instrucciones Instruccion[]
+  reuniones    Reunion[]
+  iso14001     Iso14001Check[]
+
+  @@index([cliente_id])
+  @@index([consultor_id])
+  @@map("projects")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// QUESTIONNAIRE  (1:1 with Proyecto)
+// ─────────────────────────────────────────────────────────────────
+
+model Cuestionario {
+  id                  Int      @id @default(autoincrement())
+  proyecto_id         String   @unique @db.VarChar(36)
+  respondido          Boolean  @default(false)
+  giro                String   @default("") @db.VarChar(100)
+  emisiones           Boolean?
+  agua                Boolean?
+  residuos_peligrosos Boolean  @default(false)
+  residuos_especiales Boolean  @default(false)
+  obras               Boolean?
+  fecha               DateTime? @db.Date
+  updated_at          DateTime  @updatedAt
+
+  proyecto Proyecto @relation(fields: [proyecto_id], references: [id], onDelete: Cascade)
+
+  @@map("questionnaires")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// TRAMITES
+// ─────────────────────────────────────────────────────────────────
+
+model Tramite {
+  id           String        @id @default(uuid())
+  proyecto_id  String        @db.VarChar(36)
+  catalog_id   String        @db.VarChar(50)
+  nombre       String        @db.VarChar(200)
+  autoridad    String        @db.VarChar(100)
+  nivel        TramiteNivel
+  base_legal   String        @default("") @db.VarChar(300)
+  descripcion  String        @default("") @db.Text
+  estado       TramiteEstado @default(no_iniciado)
+  fecha_limite DateTime?     @db.Date
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+
+  proyecto   Proyecto           @relation(fields: [proyecto_id], references: [id], onDelete: Cascade)
+  cronograma Cronograma?
+  documentos TramiteDocumento[]
+  notas      NotaTramite[]
+  alertas    Alerta[]
+
+  @@index([proyecto_id])
+  @@index([estado])
+  @@index([fecha_limite])
+  @@map("tramites")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CRONOGRAMA  (1:1 with Tramite)
+// ─────────────────────────────────────────────────────────────────
+
+model Cronograma {
+  id         Int      @id @default(autoincrement())
+  tramite_id String   @unique @db.VarChar(36)
+  inicio     DateTime? @db.Date
+  fin        DateTime? @db.Date
+  notas      String    @default("") @db.Text
+
+  tramite Tramite @relation(fields: [tramite_id], references: [id], onDelete: Cascade)
+  hitos   Hito[]
+
+  @@map("cronogramas")
+}
+
+model Hito {
+  id            String   @id @default(uuid())
+  cronograma_id Int
+  nombre        String   @db.VarChar(200)
+  fecha         DateTime @db.Date
+  completado    Boolean  @default(false)
+
+  cronograma Cronograma @relation(fields: [cronograma_id], references: [id], onDelete: Cascade)
+
+  @@index([cronograma_id])
+  @@map("hitos")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SUPPORTING TRAMITE TABLES
+// ─────────────────────────────────────────────────────────────────
+
+model TramiteDocumento {
+  id         Int     @id @default(autoincrement())
+  tramite_id String  @db.VarChar(36)
+  texto      String  @db.VarChar(300)
+  orden      Int     @default(0)
+
+  tramite Tramite @relation(fields: [tramite_id], references: [id], onDelete: Cascade)
+
+  @@index([tramite_id])
+  @@map("tramite_documentos")
+}
+
+model NotaTramite {
+  id         String   @id @default(uuid())
+  tramite_id String   @db.VarChar(36)
+  texto      String   @db.Text
+  fecha      DateTime @default(now())
+
+  tramite Tramite @relation(fields: [tramite_id], references: [id], onDelete: Cascade)
+
+  @@index([tramite_id])
+  @@map("notas_tramite")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ALERTAS
+// ─────────────────────────────────────────────────────────────────
+
+model Alerta {
+  id          String     @id @default(uuid())
+  proyecto_id String     @db.VarChar(36)
+  tramite_id  String?    @db.VarChar(36)
+  tipo        AlertaTipo
+  mensaje     String     @db.Text
+  fecha       DateTime   @db.Date
+  leido       Boolean    @default(false)
+  created_at  DateTime   @default(now())
+
+  proyecto Proyecto @relation(fields: [proyecto_id], references: [id], onDelete: Cascade)
+  tramite  Tramite? @relation(fields: [tramite_id],  references: [id], onDelete: SetNull)
+
+  @@index([proyecto_id])
+  @@index([leido])
+  @@map("alertas")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// INSTRUCCIONES  (admin → client messages)
+// ─────────────────────────────────────────────────────────────────
+
+model Instruccion {
+  id          String   @id @default(uuid())
+  proyecto_id String   @db.VarChar(36)
+  texto       String   @db.Text
+  urgente     Boolean  @default(false)
+  fecha       DateTime @default(now())
+  leido       Boolean  @default(false)
+
+  proyecto Proyecto @relation(fields: [proyecto_id], references: [id], onDelete: Cascade)
+
+  @@index([proyecto_id])
+  @@map("instrucciones")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// REUNIONES
+// ─────────────────────────────────────────────────────────────────
+
+model Reunion {
+  id          String   @id @default(uuid())
+  proyecto_id String   @db.VarChar(36)
+  titulo      String   @db.VarChar(200)
+  fecha       DateTime @db.Date
+  hora        String   @db.VarChar(10)
+  duracion    String   @default("60") @db.VarChar(20)
+  agenda      String   @default("") @db.Text
+  gcal_link   String   @default("") @db.Text
+  creado      DateTime @default(now())
+
+  proyecto Proyecto @relation(fields: [proyecto_id], references: [id], onDelete: Cascade)
+
+  @@index([proyecto_id])
+  @@index([fecha])
+  @@map("reuniones")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ISO 14001:2015 COMPLIANCE TRACKING
+// ─────────────────────────────────────────────────────────────────
+
+model Iso14001Check {
+  id          Int     @id @default(autoincrement())
+  proyecto_id String  @db.VarChar(36)
+  seccion_key String  @db.VarChar(50)
+  item_key    String  @db.VarChar(50)
+  cumple      Boolean @default(false)
+
+  proyecto Proyecto @relation(fields: [proyecto_id], references: [id], onDelete: Cascade)
+
+  @@unique([proyecto_id, seccion_key, item_key])
+  @@index([proyecto_id])
+  @@map("iso14001_checks")
+}
