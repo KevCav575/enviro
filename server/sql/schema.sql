@@ -1,12 +1,13 @@
 -- EnviroGest MX — MySQL DDL
 -- Compatible con MySQL 8.0+
 -- Ejecutar en orden; todas las FKs están al final para evitar dependencias circulares.
-
-CREATE DATABASE IF NOT EXISTS envirogest
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE envirogest;
+--
+-- HOSTING COMPARTIDO (InfinityFree, iFastNet, cPanel, etc.):
+--   No ejecutes CREATE DATABASE ni USE — la DB ya existe y la selecciona tu panel.
+--   Abre phpMyAdmin → selecciona tu base de datos → pestaña SQL → pega todo lo de abajo.
+--
+-- TU DATABASE_URL quedará así:
+--   mysql://if0_41860454:TU_PASSWORD@sql.infinityfree.com:3306/if0_41860454_envirogest
 
 -- ─────────────────────────────────────────────────────────────────
 -- USERS

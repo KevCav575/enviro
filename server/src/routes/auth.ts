@@ -19,8 +19,9 @@ function toSafe(u: StoredUser): SafeUser {
 }
 
 function issueToken(res: Response, payload: JwtPayload): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const token = jwt.sign(payload, config.jwtSecret, {
-    expiresIn: config.jwtExpiresIn as string,
+    expiresIn: config.jwtExpiresIn as any,
   });
   res.cookie(config.cookieName, token, {
     httpOnly: true,
